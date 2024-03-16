@@ -199,6 +199,10 @@ mod tests {
     #[test]
     fn test_is_7z() {
         assert_eq!(is_7z("tests/sample.7z").unwrap(), true);
+        assert_eq!(is_7z("tests/7ziplogo_p.7z").unwrap(), true);
+        assert_eq!(is_7z("tests/7ziplogo.7z").unwrap(), true);
+        assert_eq!(is_7z("tests/7zFormat.txt").unwrap(), false);
+        assert_eq!(is_7z("tests/7ziplogo.png").unwrap(), false);
     }
 
     #[test]
