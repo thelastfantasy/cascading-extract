@@ -1,6 +1,7 @@
 use log::info;
+use serde::Deserialize;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, BufReader, Read};
 use std::path::Path;
 
 use sevenz_rust::default_entry_extract_fn;
@@ -29,4 +30,65 @@ pub fn try_extract_7z_with_password<P: AsRef<Path>>(
         },
     )
     .map_err(|e| e.into())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    #[serde(rename = "config")]
+    pub config: ConfigSettings,
+    #[serde(rename = "user")]
+    pub user: UserConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigSettings {
+    pub delete_archive: bool,
+    pub recursive_search: bool,
+    #[serde(default = "default_threads")]
+    pub threads: u8,
+    pub dest: String,
+    pub smart_mode: bool,
+}
+
+fn default_threads() -> u8 {
+    4
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserConfig {
+    pub passwords: Option<Vec<String>>,
+    pub watch_folders: Option<Vec<String>>,
+}
+
+pub fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
+    let settings_file = File::open("settings.toml")?;
+    let mut buf_reader = BufReader::new(settings_file);
+
+    let mut settings_content = String::new();
+    buf_reader.read_to_string(&mut settings_content)?;
+
+    let mut settings: Config = toml::from_str(&settings_content)?;
+
+    if settings.config.threads < 1 || settings.config.threads > 8 {
+        settings.config.threads = default_threads();
+    }
+
+    Ok(settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_config() {
+        let config = read_config().unwrap();
+        assert_eq!(config.config.delete_archive, true);
+        assert_eq!(config.config.recursive_search, true);
+        assert_eq!(config.config.threads, 4);
+        assert_eq!(config.config.dest, "".to_string());
+        assert_eq!(config.config.smart_mode, true);
+        assert_eq!(config.user.passwords.unwrap()[0], "1151".to_string());
+        assert_eq!(config.user.watch_folders.unwrap().len(), 0);
+    }
 }

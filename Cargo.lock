@@ -192,6 +192,7 @@ dependencies = [
  "env_logger",
  "infer",
  "log",
+ "serde",
  "sevenz-rust",
  "tokio",
  "toml",

@@ -1,0 +1,54 @@
+[config]
+# if archives will be deleted after unpacking
+delete_archive = true
+
+# If true, the program will search for files in subdirectories
+recursive_search = true
+
+# set the threads to try passwords for archives, max 8
+# it is NOT the threads to extract files
+threads = 4
+
+# the destination folder for the extracted files
+# default extraction folder, set to "." or "" to extract to the current folder of the archive file
+# legal value samples: ".", "D:/media/extraction", etc.
+# warning: "D:\media\extraction" is not a legal value, use "/" instead of "\"
+dest = ""
+
+# smart mode will create a new folder if the archive contains more than one file or folder in the archive root, like bandizip
+smart_mode = true
+
+
+[user]
+# add your password here, to the top of the list if you know it
+passwords = [
+    "1151",
+    "password",
+    "123456",
+    "12345678",
+    "1234",
+    "qwerty",
+    "12345",
+    "dragon",
+    "pussy",
+    "baseball",
+    "football",
+    "letmein",
+    "monkey",
+    "696969",
+    "abc123",
+    "mustang",
+    "michael",
+    "shadow",
+    "master",
+    "jennifer",
+    "111111",
+    "2000",
+    "jordan",
+    "superman",
+    "harley",
+    "123456",
+]
+
+# The program will search for files in these folders, if the list is empty, the program will search the current folder of the program
+watch_folders = []
