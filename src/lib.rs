@@ -235,8 +235,9 @@ mod tests {
 
     #[test]
     fn test_my_logger() {
-        my_logger::setup_logger();
+        my_logger::init();
         info!("test");
         log::error!("test");
+        log::warn!("test");
     }
 }
