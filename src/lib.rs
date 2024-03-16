@@ -2,6 +2,7 @@ use log::info;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{self, BufReader, Read};
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -20,7 +21,7 @@ pub fn try_extract_7z_with_password<P: AsRef<Path>>(
     path: P,
     password: &str,
     dest: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     sevenz_rust::decompress_with_extract_fn_and_password(
         File::open(&path).unwrap(),
         dest,
@@ -84,7 +85,7 @@ pub fn should_create_folder_when_extract_with_smart_mode<P: AsRef<Path>>(
 
 pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
     paths: Arc<[P]>,
-    passwords: Vec<String>,
+    passwords: Vec<Arc<String>>,
     dest: P,
     max_threads: usize,
 ) {
@@ -110,14 +111,11 @@ pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
                 if let Ok(()) = try_extract_7z_with_password(&path, &password, &dest) {
                     info!("解压成功: {}", path.as_ref().to_string_lossy());
                     info!("找到正确的密码: {}", password);
-                    continue;
+                    stop_flag.store(true, Ordering::Relaxed);
+                    tx.send(password.deref().clone()).await.unwrap();
+                    drop(permit);
+                    return;
                 }
-
-                // Set the stop flag to true if successful password found
-                stop_flag.store(true, Ordering::Relaxed);
-
-                tx.send(password.clone()).await.unwrap();
-                break;
             }
 
             drop(permit);
@@ -126,9 +124,9 @@ pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
 
     // Wait for the first successful extraction or stop flag
     while let Some(password) = rx.recv().await {
-        println!("找到正确的密码: {}", password);
+        info!("找到正确的密码: {}", password);
         if stop_flag.load(Ordering::Relaxed) {
-            println!("发现正确密码，终止其他任务队列");
+            info!("发现正确密码，终止其他任务队列");
             break;
         }
     }
@@ -180,6 +178,7 @@ pub fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    use clap::error;
     use sevenz_rust::Password;
 
     use super::*;
@@ -232,5 +231,12 @@ mod tests {
             should_create_folder_when_extract_with_smart_mode("tests/7ziplogo.7z").unwrap(),
             false
         );
+    }
+
+    #[test]
+    fn test_my_logger() {
+        my_logger::setup_logger();
+        info!("test");
+        log::error!("test");
     }
 }
