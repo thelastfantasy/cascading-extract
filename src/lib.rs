@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::{self, BufReader, Read};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex, Semaphore};
 
 use sevenz_rust::default_entry_extract_fn;
 
@@ -30,6 +33,105 @@ pub fn try_extract_7z_with_password<P: AsRef<Path>>(
         },
     )
     .map_err(|e| e.into())
+}
+
+pub fn read_7z_contents<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<sevenz_rust::SevenZArchiveEntry>, Box<dyn std::error::Error>> {
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
+    let password = sevenz_rust::Password::empty();
+    let archive = sevenz_rust::Archive::read(&mut file, len, password.as_slice())?;
+
+    Ok(archive.files)
+}
+
+pub fn should_create_folder_when_extract_with_smart_mode<P: AsRef<Path>>(
+    path: P,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let files = read_7z_contents(path)?;
+
+    let mut root_file_count = 0;
+    let mut root_directory_count = 0;
+    let mut should_create = false;
+
+    for file in &files {
+        if root_file_count > 1 || root_directory_count > 1 {
+            break;
+        }
+
+        if file.is_directory() {
+            if file.name().contains('/') {
+                continue;
+            } else {
+                root_directory_count += 1;
+            }
+        } else {
+            if file.name().contains('/') {
+                continue;
+            } else {
+                root_file_count += 1;
+            }
+        }
+    }
+
+    if root_file_count > 1 || root_directory_count > 1 {
+        should_create = true;
+    }
+
+    Ok(should_create)
+}
+
+pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
+    paths: Arc<[P]>,
+    passwords: Vec<String>,
+    dest: P,
+    max_threads: usize,
+) {
+    let semaphore = Arc::new(Mutex::new(Semaphore::new(max_threads)));
+    let stop_flag = Arc::new(AtomicBool::new(false)); // Moved stop_flag outside the loop
+
+    // Explicitly specify the type parameter for the Sender
+    let (tx, mut rx) = mpsc::channel::<String>(passwords.len());
+
+    for password in passwords {
+        let tx = tx.clone();
+        let dest = dest.as_ref().to_owned();
+        let paths = paths.clone();
+        let semaphore = semaphore.clone(); // Clone the Arc
+
+        let stop_flag = stop_flag.clone(); // Clone the Arc
+
+        tokio::spawn(async move {
+            let semaphore_ref = semaphore.lock().await;
+            let permit = semaphore_ref.acquire().await.unwrap();
+
+            for path in paths.iter() {
+                if let Ok(()) = try_extract_7z_with_password(&path, &password, &dest) {
+                    info!("解压成功: {}", path.as_ref().to_string_lossy());
+                    info!("找到正确的密码: {}", password);
+                    continue;
+                }
+
+                // Set the stop flag to true if successful password found
+                stop_flag.store(true, Ordering::Relaxed);
+
+                tx.send(password.clone()).await.unwrap();
+                break;
+            }
+
+            drop(permit);
+        });
+    }
+
+    // Wait for the first successful extraction or stop flag
+    while let Some(password) = rx.recv().await {
+        println!("找到正确的密码: {}", password);
+        if stop_flag.load(Ordering::Relaxed) {
+            println!("发现正确密码，终止其他任务队列");
+            break;
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +180,8 @@ pub fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    use sevenz_rust::Password;
+
     use super::*;
 
     #[test]
@@ -90,5 +194,39 @@ mod tests {
         assert_eq!(config.config.smart_mode, true);
         assert_eq!(config.user.passwords.unwrap()[0], "1151".to_string());
         assert_eq!(config.user.watch_folders.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_is_7z() {
+        assert_eq!(is_7z("tests/sample.7z").unwrap(), true);
+    }
+
+    #[test]
+    fn show_7z_content() {
+        let mut file = std::fs::File::open("tests/sample.7z").unwrap();
+        let len = file.metadata().unwrap().len();
+        let password = Password::empty();
+        let archive = sevenz_rust::Archive::read(&mut file, len, password.as_slice()).unwrap();
+        let folder_count = archive.folders.len();
+
+        // println!("{:?}", archive.folders);
+        // println!("{:?}", archive.files);
+        for file in archive.files {
+            println!("{:?}", file.name());
+            println!("{:?}", file.is_directory());
+        }
+        assert_eq!(folder_count, 1);
+    }
+
+    #[test]
+    fn test_should_create_folder_when_extract_with_smart_mode() {
+        assert_eq!(
+            should_create_folder_when_extract_with_smart_mode("tests/sample.7z").unwrap(),
+            true
+        );
+        assert_eq!(
+            should_create_folder_when_extract_with_smart_mode("tests/7ziplogo.7z").unwrap(),
+            false
+        );
     }
 }
