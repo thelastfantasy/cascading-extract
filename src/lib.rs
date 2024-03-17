@@ -83,6 +83,11 @@ pub fn should_create_folder_when_extract_with_smart_mode<P: AsRef<Path>>(
     Ok(should_create)
 }
 
+pub fn delete_archive<P: AsRef<Path>>(path: P) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
 pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
     paths: Arc<[P]>,
     passwords: Vec<Arc<String>>,
@@ -178,7 +183,6 @@ pub fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use clap::error;
     use sevenz_rust::Password;
 
     use super::*;
