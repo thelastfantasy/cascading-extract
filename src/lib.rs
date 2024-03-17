@@ -1,5 +1,6 @@
 use log::info;
 use serde::Deserialize;
+use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, Read};
 use std::ops::Deref;
@@ -135,6 +136,15 @@ pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
             break;
         }
     }
+}
+
+pub fn extract_to_temp_folder<P: AsRef<Path> + Send + Sync>(
+    path: P,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    let temp_dir = env::temp_dir().join("7z-rs");
+    let temp_dir_path = temp_dir.to_path_buf();
+    try_extract_7z_with_password(&path, "", &temp_dir_path)?;
+    Ok(temp_dir_path)
 }
 
 #[derive(Debug, Deserialize)]
