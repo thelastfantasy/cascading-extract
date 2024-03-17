@@ -141,8 +141,9 @@ pub async fn start_extraction<P: AsRef<Path> + Send + Sync + 'static>(
 pub fn extract_to_temp_folder<P: AsRef<Path> + Send + Sync>(
     path: P,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    let temp_dir = env::temp_dir().join("7z-rs");
+    let temp_dir = env::temp_dir().join("cascading-extract");
     let temp_dir_path = temp_dir.to_path_buf();
+    std::fs::create_dir_all(&temp_dir_path)?;
     try_extract_7z_with_password(&path, "", &temp_dir_path)?;
     Ok(temp_dir_path)
 }
